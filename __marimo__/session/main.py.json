@@ -1,0 +1,138 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.17.8"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "792f48e86ae0889725d1a7990b4c9727",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "81c159b6aedf37889ce5d1d45e443564",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "97b4801b6c238a3d97c5a2d89b5a77e7",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "273e78620569e4e5b963ef69e583cab2",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "7876b7d96f7b37d3e4d15d27e4491f28",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "735a69a1bb59f19800997ed86105b07f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Xref",
+      "code_hash": "edca1e391a27b663d2ecee5d2e66085c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "2ae8d5d19563034a847bde4a90a9e629",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><marimo-ui-element object-id='SFPL-0' random-id='62e28780-8eba-5525-4a1d-53cfaf800e0f'><marimo-text data-initial-value='&quot;&quot;' data-label='&quot;&lt;span class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&gt;&lt;span class=&#92;&quot;paragraph&#92;&quot;&gt;Postcode:&lt;/span&gt;&lt;/span&gt;&quot;' data-placeholder='&quot;Enter UK postcode (e.g., SW1A 1AA)&quot;' data-kind='&quot;text&quot;' data-full-width='false' data-disabled='false' data-debounce='true'></marimo-text></marimo-ui-element><marimo-ui-element object-id='SFPL-1' random-id='cc745d1a-cdf7-6bf5-0c27-7a2413c7409f'><marimo-text data-initial-value='&quot;2025-10&quot;' data-label='&quot;&lt;span class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&gt;&lt;span class=&#92;&quot;paragraph&#92;&quot;&gt;Date (Year-Month):&lt;/span&gt;&lt;/span&gt;&quot;' data-placeholder='&quot;YYYY-MM&quot;' data-kind='&quot;text&quot;' data-full-width='false' data-disabled='false' data-debounce='true'></marimo-text></marimo-ui-element><marimo-ui-element object-id='SFPL-2' random-id='574c1a20-1d66-2cc4-9f99-f107a1aedae6'><marimo-button data-initial-value='0' data-label='&quot;&lt;span class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&gt;&lt;span class=&#92;&quot;paragraph&#92;&quot;&gt;Fetch Crimes&lt;/span&gt;&lt;/span&gt;&quot;' data-kind='&quot;neutral&quot;' data-disabled='false' data-full-width='false'></marimo-button></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "98b8d8ba5f58d6344c09bd154044f6de",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><h3 id=\"results\">Results</h3>\n<ul>\n<li><strong>Postcode:</strong> E5 9NB</li>\n<li><strong>Coordinates:</strong> 51.564281, -0.052817</li>\n<li><strong>Date:</strong> 2024-01</li>\n<li><strong>Crimes Found:</strong> 835</li>\n<li><strong>New Records Added:</strong> 835</li>\n</ul></span><marimo-ui-element object-id='BYtC-0' random-id='a75cf697-3d43-f284-8094-ac31ee49ca40'><marimo-vega data-initial-value='{}' data-label='null' data-spec='{&quot;config&quot;:{&quot;view&quot;:{&quot;continuousWidth&quot;:300,&quot;continuousHeight&quot;:300},&quot;axis&quot;:{&quot;grid&quot;:true}},&quot;data&quot;:{&quot;url&quot;:&quot;./@file/91897-94400-COZ3dO1w.arrow&quot;,&quot;format&quot;:{&quot;type&quot;:&quot;arrow&quot;}},&quot;mark&quot;:{&quot;type&quot;:&quot;point&quot;},&quot;encoding&quot;:{&quot;color&quot;:{&quot;field&quot;:&quot;category&quot;,&quot;type&quot;:&quot;nominal&quot;},&quot;tooltip&quot;:[{&quot;field&quot;:&quot;lat&quot;,&quot;format&quot;:&quot;,.2f&quot;},{&quot;field&quot;:&quot;lng&quot;,&quot;format&quot;:&quot;,.2f&quot;},{&quot;field&quot;:&quot;month&quot;}],&quot;x&quot;:{&quot;field&quot;:&quot;lng&quot;,&quot;scale&quot;:{&quot;zero&quot;:false},&quot;type&quot;:&quot;quantitative&quot;},&quot;y&quot;:{&quot;field&quot;:&quot;lat&quot;,&quot;scale&quot;:{&quot;zero&quot;:false},&quot;type&quot;:&quot;quantitative&quot;}},&quot;height&quot;:290,&quot;width&quot;:&quot;container&quot;,&quot;&#36;schema&quot;:&quot;https://vega.github.io/schema/vega-lite/v6.1.0.json&quot;}' data-chart-selection='true' data-field-selection='true'></marimo-vega></marimo-ui-element></div>"
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stderr",
+          "text": "Mismatched version of altair: expected <6.0.0, got 6.0.0. Some features may not work correctly.",
+          "mimetype": "text/plain"
+        },
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "True\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+All imports should be in first cell of notebook
+Only one function per cell
+Preference is to use Polars library for dataframes and data manipulation
+Preference is to use altair for charts and graphics
+Any database that is created should be sqlite
+
+
+API endpoint
+https://data.police.uk/api/crimes-at-location?date=2024-01&lat=52.629729&lng=-1.131592
+
+Limit to 10 API endpoint requests per second
+Date should be in year-month format (example 2025-01)
+lat is latitude
+lng is longitude
+All points should be expressed as latitude and longitude when calling the API
+
+For each location (latitude longitude pair) that is queried, I am interested in capturing the Category, ID, location lat, location long, location street name, and the Month (date of the crime)).  This data should be captured to a sqlite database and new entries should be checked if they already exist by using the ID.
+
+API endpoint should be called only when a Postcode is entered into a text input and submitted.  A date in the format of year-month should also be submitted with a default of last month (from today).  This can also be changed via an input field.
+
+Resulting crimes at lcation should be projeted onto a map to show the location of each crime.  The map should be zoomed to a size of 2.5 miles by 2.5 miles.  Each crime category should be a different colour dot on the map at the lcation where the crime took place.

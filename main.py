@@ -1,3 +1,13 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "altair==6.0.0",
+#     "polars==1.35.2",
+#     "requests==2.32.5",
+#     "folium==0.20.0",
+# ]
+# ///
+
 import marimo
 
 __generated_with = "0.17.8"
@@ -13,9 +23,10 @@ def _():
     import sqlite3
     import requests
     import time
+    import folium
     from datetime import datetime, timedelta
     from pathlib import Path
-    return Path, alt, datetime, mo, pl, requests, sqlite3, time, timedelta
+    return Path, alt, datetime, folium, mo, pl, requests, sqlite3, time, timedelta
 
 
 @app.cell
@@ -128,7 +139,7 @@ def _(alt):
                 tooltip=[
                     alt.Tooltip(field='lat', format=',.2f'),
                     alt.Tooltip(field='lng', format=',.2f'),
-                    alt.Tooltip(field='month')
+                    alt.Tooltip(field='street_name')
                 ]
             )
             .properties(
@@ -143,6 +154,71 @@ def _(alt):
         )
         return chart
     return (chart_crimes,)
+
+
+@app.cell
+def _(folium):
+    def create_crime_map(crimes_df, center_lat, center_lng):
+        """Create an interactive Folium map with crime markers"""
+
+        # Create map centered on the postcode location
+        # Zoom level 14 gives approximately 2.5 mile x 2.5 mile view
+        crime_map = folium.Map(
+            location=[center_lat, center_lng],
+            zoom_start=14,
+            tiles='OpenStreetMap',
+            min_zoom=13,  # Prevent zooming out too far
+            max_zoom=16   # Prevent zooming in too close
+        )
+
+        # Color mapping for crime categories
+        category_colors = {
+            'anti-social-behaviour': 'orange',
+            'bicycle-theft': 'blue',
+            'burglary': 'red',
+            'criminal-damage-arson': 'darkred',
+            'drugs': 'purple',
+            'other-theft': 'lightblue',
+            'possession-of-weapons': 'black',
+            'public-order': 'pink',
+            'robbery': 'darkpurple',
+            'shoplifting': 'lightgreen',
+            'theft-from-the-person': 'cadetblue',
+            'vehicle-crime': 'darkblue',
+            'violent-crime': 'darkred',
+            'other-crime': 'gray'
+        }
+
+        # Add a marker for the center (postcode location)
+        folium.Marker(
+            location=[center_lat, center_lng],
+            popup='Search Location',
+            tooltip='Postcode Location',
+            icon=folium.Icon(color='green', icon='home', prefix='fa')
+        ).add_to(crime_map)
+
+        # Add crime markers
+        for crime in crimes_df.iter_rows(named=True):
+            color = category_colors.get(crime['category'], 'gray')
+
+            folium.CircleMarker(
+                location=[crime['lat'], crime['lng']],
+                radius=6,
+                popup=f"""
+                    <b>Category:</b> {crime['category']}<br>
+                    <b>Street:</b> {crime['street_name']}<br>
+                    <b>Month:</b> {crime['month']}<br>
+                    <b>Location:</b> {crime['lat']:.4f}, {crime['lng']:.4f}
+                """,
+                tooltip=crime['category'].replace('-', ' ').title(),
+                color=color,
+                fill=True,
+                fillColor=color,
+                fillOpacity=0.7
+            ).add_to(crime_map)
+
+        return crime_map
+    return (create_crime_map,)
 
 
 @app.cell
@@ -219,6 +295,7 @@ def _(datetime, mo, timedelta):
 @app.cell
 def _(
     chart_crimes,
+    create_crime_map,
     date_input,
     fetch_crimes_at_location,
     init_database,
@@ -253,6 +330,7 @@ def _(
                     # Convert to Polars DataFrame for charting
                     crimes_df = pl.DataFrame(crimes_fetched)
                     chart = chart_crimes(crimes_df)
+                    crime_map = create_crime_map(crimes_df, lat, lng)
 
                     result_message = mo.vstack([
                         mo.md(f"""
@@ -263,6 +341,9 @@ def _(
                         - **Crimes Found:** {len(crimes_fetched)}
                         - **New Records Added:** {new_records}
                         """),
+                        mo.md("### Interactive Map"),
+                        crime_map,
+                        mo.md("### Crime Distribution Chart"),
                         mo.ui.altair_chart(chart)
                     ])
                 else:

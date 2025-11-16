@@ -5,7 +5,7 @@ A marimo notebook application that fetches UK crime statistics from the Police.u
 
 ## Current Status
 **Completed:** Working implementation with inline chart visualization
-**Last Updated:** 2025-11-14 (evening session)
+**Last Updated:** 2025-11-15
 
 ## Features Implemented
 
@@ -56,7 +56,10 @@ A marimo notebook application that fetches UK crime statistics from the Police.u
 ### 4. Data Visualization
 - **Inline Chart**: Altair scatter plot shown immediately after data fetch
 - **Color Coding**: Each crime category shown in different color
-- **Tooltips**: Hover to see crime details (lat/lng with 2 decimal precision, month)
+- **Tooltips**: Hover to see crime details
+  - Latitude (formatted to 2 decimal places)
+  - Longitude (formatted to 2 decimal places)
+  - Month
 - **Interactive**: Built-in Altair interactivity
 - **Responsive**: Width set to 'container', height 290px
 - **Grid**: Axis grid enabled for better readability
@@ -74,15 +77,15 @@ A marimo notebook application that fetches UK crime statistics from the Police.u
 - **pathlib**: File path management
 
 ### Code Structure (main.py)
-1. **Cell 1** (lines 7-18): All imports
-2. **Cell 2** (lines 21-43): Database initialization function
-3. **Cell 3** (lines 46-78): Save crimes to database function
-4. **Cell 4** (lines 81-94): Retrieve crimes from database function (not currently used)
-5. **Cell 5** (lines 97-115): Postcode to coordinates conversion
-6. **Cell 6** (lines 118-145): Chart creation function using Altair
-7. **Cell 7** (lines 148-189): UK Police API fetching with rate limiting
-8. **Cell 8** (lines 192-216): UI inputs (postcode, date, run button)
-9. **Cell 9** (lines 219-282): Main processing logic with inline chart display
+1. **Cell 1** (lines 8-18): All imports
+2. **Cell 2** (lines 22-43): Database initialization function
+3. **Cell 3** (lines 47-78): Save crimes to database function
+4. **Cell 4** (lines 82-94): Retrieve crimes from database function (not currently used)
+5. **Cell 5** (lines 98-115): Postcode to coordinates conversion
+6. **Cell 6** (lines 119-145): Chart creation function using Altair
+7. **Cell 7** (lines 149-189): UK Police API fetching with rate limiting
+8. **Cell 8** (lines 193-216): UI inputs (postcode, date, run button)
+9. **Cell 9** (lines 220-282): Main processing logic with inline chart display
 
 ## API Endpoints Used
 
@@ -202,8 +205,9 @@ marimo run main.py
   - Trend over time
 - [ ] Cache postcode lookups to reduce API calls
   - Store in database or separate cache file
-- [ ] Add street name to chart tooltips
-  - Currently only shows lat/lng and month
+- [ ] Add category filtering to visualizations
+  - Dropdown or checkboxes to filter displayed crime types
+  - Show all categories or filter to specific ones
 
 ### Low Priority
 - [ ] Add multiple postcode batch processing
@@ -301,7 +305,7 @@ When picking this up again, consider:
 10. Do we want crime trend analysis over time?
 11. Should we add crime category statistics/summaries?
 12. Do we need comparison views (different postcodes or time periods)?
-13. Should tooltips show more information (like street name)?
+13. Should we add category filtering to the visualization?
 
 **User Experience:**
 14. ✓ Inline chart display is working well (confirmed 2025-11-14)
@@ -309,6 +313,33 @@ When picking this up again, consider:
 16. Should there be help text explaining UK crime categories?
 
 ## Change Log
+
+### 2025-11-15 - Category Filter Exploration and Reversion
+
+**Session Summary:**
+Explored adding a category dropdown filter to allow users to filter displayed crimes by type. After implementation, encountered KeyError issues and the user decided to revert to the previous stable version. The stable version includes improved tooltip formatting showing lat/lng with 2 decimal precision.
+
+**What was attempted:**
+- Added a crime category dropdown with 15 UK crime types (all-crime, burglary, drugs, violent-crime, etc.)
+- Modified main processing logic to filter displayed crimes by selected category
+- API calls remained unchanged (still fetching all crime types)
+- Chart would filter data post-fetch based on dropdown selection
+
+**Why it was reverted:**
+- KeyError when attempting to display category names in results
+- User preferred to return to stable, working version
+- Category filtering moved to "Medium Priority" future enhancements list
+
+**Current stable state (after reversion):**
+- UI has postcode input, date input, and submit button only
+- Tooltips display latitude and longitude (formatted to 2 decimal places) plus month
+- All crimes fetched are displayed without filtering
+- Inline chart visualization working correctly
+
+**Lessons learned:**
+- Keep features simple and test thoroughly before adding complexity
+- Category filtering is a desired feature but needs more robust implementation
+- Current stable version meets core requirements effectively
 
 ### 2025-11-14 (Evening) - UI Fixes and Chart Implementation
 

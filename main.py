@@ -32,11 +32,12 @@ def _():
 @app.cell
 def _(Path, sqlite3):
     def init_database():
-        """Initialize SQLite database with crimes table"""
+        """Initialize SQLite database with crimes table and query cache"""
         db_path = Path("crimes.db")
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
 
+        # Create crimes table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS crimes (
                 id TEXT PRIMARY KEY,
@@ -45,6 +46,19 @@ def _(Path, sqlite3):
                 lat REAL,
                 lng REAL,
                 street_name TEXT
+            )
+        """)
+
+        # Create query cache table to track what's been fetched
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS query_cache (
+                postcode TEXT,
+                month TEXT,
+                lat REAL,
+                lng REAL,
+                crimes_count INTEGER,
+                fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (postcode, month)
             )
         """)
 
@@ -103,6 +117,62 @@ def _(pl, sqlite3):
         conn.close()
         return df
     return
+
+
+@app.cell
+def _(sqlite3):
+    def check_query_cache(db_path, postcode, month):
+        """Check if we've already fetched data for this postcode+month combination"""
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT crimes_count, fetched_at
+            FROM query_cache
+            WHERE postcode = ? AND month = ?
+        """, (postcode.upper().replace(' ', ''), month))
+
+        result = cursor.fetchone()
+        conn.close()
+
+        if result:
+            return True, result[0], result[1]  # (exists, count, timestamp)
+        return False, 0, None
+    return (check_query_cache,)
+
+
+@app.cell
+def _(sqlite3):
+    def add_to_query_cache(db_path, postcode, month, lat, lng, crimes_count):
+        """Add a query to the cache after fetching from API"""
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT OR REPLACE INTO query_cache (postcode, month, lat, lng, crimes_count)
+            VALUES (?, ?, ?, ?, ?)
+        """, (postcode.upper().replace(' ', ''), month, lat, lng, crimes_count))
+
+        conn.commit()
+        conn.close()
+    return (add_to_query_cache,)
+
+
+@app.cell
+def _(pl, sqlite3):
+    def get_crimes_from_db_filtered(db_path, month):
+        """Retrieve crimes from database for a specific month"""
+        conn = sqlite3.connect(db_path)
+
+        df = pl.read_database(
+            "SELECT * FROM crimes WHERE month = ?",
+            connection=conn,
+            execute_options={"parameters": (month,)}
+        )
+
+        conn.close()
+        return df
+    return (get_crimes_from_db_filtered,)
 
 
 @app.cell
@@ -294,10 +364,13 @@ def _(datetime, mo, timedelta):
 
 @app.cell
 def _(
+    add_to_query_cache,
     chart_crimes,
+    check_query_cache,
     create_crime_map,
     date_input,
     fetch_crimes_at_location,
+    get_crimes_from_db_filtered,
     init_database,
     mo,
     pl,
@@ -320,34 +393,72 @@ def _(
             lat, lng = postcode_to_coordinates(postcode)
 
             if lat and lng:
-                # Fetch crimes from API
-                crimes_fetched = fetch_crimes_at_location(lat, lng, date)
+                # Check cache first
+                is_cached, cached_count, fetched_at = check_query_cache(db_path, postcode, date)
 
-                if crimes_fetched:
-                    # Save to database
-                    new_records = save_crimes_to_db(crimes_fetched, db_path)
+                if is_cached:
+                    # Data already exists - retrieve from database
+                    crimes_df = get_crimes_from_db_filtered(db_path, date)
+                    new_records = 0
+                    data_source = "cache"
 
-                    # Convert to Polars DataFrame for charting
-                    crimes_df = pl.DataFrame(crimes_fetched)
-                    chart = chart_crimes(crimes_df)
-                    crime_map = create_crime_map(crimes_df, lat, lng)
+                    if len(crimes_df) > 0:
+                        chart = chart_crimes(crimes_df)
+                        crime_map = create_crime_map(crimes_df, lat, lng)
 
-                    result_message = mo.vstack([
-                        mo.md(f"""
-                        ### Results
-                        - **Postcode:** {postcode}
-                        - **Coordinates:** {lat:.6f}, {lng:.6f}
-                        - **Date:** {date}
-                        - **Crimes Found:** {len(crimes_fetched)}
-                        - **New Records Added:** {new_records}
-                        """),
-                        mo.md("### Interactive Map"),
-                        crime_map,
-                        mo.md("### Crime Distribution Chart"),
-                        mo.ui.altair_chart(chart)
-                    ])
+                        result_message = mo.vstack([
+                            mo.md(f"""
+                            ### Results ✓ (From Cache)
+                            - **Postcode:** {postcode}
+                            - **Coordinates:** {lat:.6f}, {lng:.6f}
+                            - **Date:** {date}
+                            - **Crimes Found:** {len(crimes_df)}
+                            - **Data Source:** Cache (fetched {fetched_at})
+                            - **New API Call:** No - data already in database
+                            """),
+                            mo.md("### Interactive Map"),
+                            crime_map,
+                            mo.md("### Crime Distribution Chart"),
+                            mo.ui.altair_chart(chart)
+                        ])
+                    else:
+                        result_message = mo.md(f"Cache shows no crimes for this location and date (checked {fetched_at}).")
                 else:
-                    result_message = mo.md("No crimes found for this location and date.")
+                    # Not cached - fetch from API
+                    crimes_fetched = fetch_crimes_at_location(lat, lng, date)
+                    data_source = "API"
+
+                    if crimes_fetched:
+                        # Save to database
+                        new_records = save_crimes_to_db(crimes_fetched, db_path)
+
+                        # Add to cache
+                        add_to_query_cache(db_path, postcode, date, lat, lng, len(crimes_fetched))
+
+                        # Convert to Polars DataFrame for charting
+                        crimes_df = pl.DataFrame(crimes_fetched)
+                        chart = chart_crimes(crimes_df)
+                        crime_map = create_crime_map(crimes_df, lat, lng)
+
+                        result_message = mo.vstack([
+                            mo.md(f"""
+                            ### Results (Fresh from API)
+                            - **Postcode:** {postcode}
+                            - **Coordinates:** {lat:.6f}, {lng:.6f}
+                            - **Date:** {date}
+                            - **Crimes Found:** {len(crimes_fetched)}
+                            - **New Records Added:** {new_records}
+                            - **Data Source:** UK Police API (just fetched)
+                            """),
+                            mo.md("### Interactive Map"),
+                            crime_map,
+                            mo.md("### Crime Distribution Chart"),
+                            mo.ui.altair_chart(chart)
+                        ])
+                    else:
+                        # No crimes found - still add to cache so we don't query again
+                        add_to_query_cache(db_path, postcode, date, lat, lng, 0)
+                        result_message = mo.md("No crimes found for this location and date.")
             else:
                 result_message = mo.md("Invalid postcode. Please try again.")
         else:

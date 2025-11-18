@@ -26,7 +26,18 @@ def _():
     import folium
     from datetime import datetime, timedelta
     from pathlib import Path
-    return Path, alt, datetime, folium, mo, pl, requests, sqlite3, time, timedelta
+    return (
+        Path,
+        alt,
+        datetime,
+        folium,
+        mo,
+        pl,
+        requests,
+        sqlite3,
+        time,
+        timedelta,
+    )
 
 
 @app.cell
@@ -160,14 +171,35 @@ def _(sqlite3):
 
 @app.cell
 def _(pl, sqlite3):
-    def get_crimes_from_db_filtered(db_path, month):
-        """Retrieve crimes from database for a specific month"""
+    def get_crimes_from_db_filtered(db_path, month, center_lat, center_lng, radius_degrees=0.02):
+        """Retrieve crimes from database for a specific month and location
+
+        Args:
+            db_path: Path to database
+            month: Month in YYYY-MM format
+            center_lat: Center latitude of search
+            center_lng: Center longitude of search
+            radius_degrees: Search radius in degrees (default 0.02 ≈ 1.4 miles)
+        """
         conn = sqlite3.connect(db_path)
 
+        # Filter by month and location (bounding box)
+        # The Police API returns crimes within ~1 mile, so we use similar filtering
         df = pl.read_database(
-            "SELECT * FROM crimes WHERE month = ?",
+            """
+            SELECT * FROM crimes
+            WHERE month = ?
+            AND lat BETWEEN ? AND ?
+            AND lng BETWEEN ? AND ?
+            """,
             connection=conn,
-            execute_options={"parameters": (month,)}
+            execute_options={"parameters": (
+                month,
+                center_lat - radius_degrees,
+                center_lat + radius_degrees,
+                center_lng - radius_degrees,
+                center_lng + radius_degrees
+            )}
         )
 
         conn.close()
@@ -177,23 +209,61 @@ def _(pl, sqlite3):
 
 @app.cell
 def _(pl, sqlite3):
-    def get_crime_counts_by_month(db_path, postcode):
-        """Get crime counts grouped by month for a specific postcode location"""
+    def get_crime_counts_by_month(db_path, postcode, center_lat, center_lng, radius_degrees=0.02):
+        """Get crime counts grouped by month for a specific location
+
+        Counts actual crimes in the database filtered by location, not cached counts.
+        This ensures histogram counts match the displayed crime counts.
+
+        Args:
+            db_path: Path to database
+            postcode: Postcode being queried
+            center_lat: Center latitude of search
+            center_lng: Center longitude of search
+            radius_degrees: Search radius in degrees (default 0.02 ≈ 1.4 miles)
+        """
         conn = sqlite3.connect(db_path)
 
-        # Get all months that have been cached for this postcode
-        query = """
-            SELECT month, crimes_count
+        # First, get all months that have been cached for this postcode
+        cached_months_query = """
+            SELECT DISTINCT month
             FROM query_cache
             WHERE postcode = ?
             ORDER BY month
         """
 
-        df = pl.read_database(
-            query,
-            connection=conn,
-            execute_options={"parameters": (postcode.upper().replace(' ', ''),)}
-        )
+        cursor = conn.cursor()
+        cursor.execute(cached_months_query, (postcode.upper().replace(' ', ''),))
+        cached_months = [row[0] for row in cursor.fetchall()]
+
+        # Now count actual crimes for each month, filtered by location
+        if cached_months:
+            # Build query to count crimes by month within the location radius
+            month_placeholders = ','.join(['?'] * len(cached_months))
+            count_query = f"""
+                SELECT month, COUNT(*) as crimes_count
+                FROM crimes
+                WHERE month IN ({month_placeholders})
+                AND lat BETWEEN ? AND ?
+                AND lng BETWEEN ? AND ?
+                GROUP BY month
+                ORDER BY month
+            """
+
+            df = pl.read_database(
+                count_query,
+                connection=conn,
+                execute_options={"parameters": (
+                    *cached_months,
+                    center_lat - radius_degrees,
+                    center_lat + radius_degrees,
+                    center_lng - radius_degrees,
+                    center_lng + radius_degrees
+                )}
+            )
+        else:
+            # No cached months, return empty dataframe
+            df = pl.DataFrame({"month": [], "crimes_count": []})
 
         conn.close()
         return df
@@ -219,6 +289,56 @@ def _(requests):
             print(f"Error converting postcode: {e}")
             return None, None
     return (postcode_to_coordinates,)
+
+
+@app.cell
+def _(datetime):
+    def validate_date_format(date_str, last_updated=None):
+        """Validate that date string is in YYYY-MM format with valid month and within data range
+
+        Args:
+            date_str: Date string to validate
+            last_updated: Most recent date available from API (optional)
+
+        Returns:
+            tuple: (is_valid: bool, error_message: str or None)
+        """
+        if not date_str or not isinstance(date_str, str):
+            return False, "Date is required"
+
+        # Check basic format
+        if len(date_str) != 7 or date_str[4] != '-':
+            return False, "Date must be in YYYY-MM format (e.g., 2024-01)"
+
+        try:
+            # Try to parse the date
+            date_obj = datetime.strptime(date_str, "%Y-%m")
+
+            # UK Police API data starts from 2022-10
+            min_date = datetime.strptime("2022-10", "%Y-%m")
+            if date_obj < min_date:
+                return False, f"Date must be 2022-10 or later (UK Police API data starts from October 2022)"
+
+            # Check against last_updated if provided
+            if last_updated:
+                max_date = datetime.strptime(last_updated, "%Y-%m")
+                if date_obj > max_date:
+                    return False, f"Date cannot be after {last_updated} (most recent data available)"
+
+            return True, None
+
+        except ValueError as e:
+            # Extract month value if possible to give better error message
+            try:
+                parts = date_str.split('-')
+                if len(parts) == 2:
+                    month = int(parts[1])
+                    if month < 1 or month > 12:
+                        return False, f"Invalid month '{parts[1]}'. Month must be between 01 and 12"
+            except:
+                pass
+            return False, f"Invalid date format: {str(e)}"
+    return (validate_date_format,)
 
 
 @app.cell
@@ -277,7 +397,7 @@ def _(datetime):
 @app.cell
 def _(alt):
     def create_crime_histogram(crime_counts_df, current_month):
-        """Create an interactive histogram showing crime counts by month"""
+        """Create a histogram showing crime counts by month with current month highlighted"""
         if len(crime_counts_df) == 0:
             return alt.Chart().mark_text(text="No data available")
 
@@ -286,13 +406,10 @@ def _(alt):
             (crime_counts_df['month'] == current_month).alias('is_current')
         )
 
-        # Create selection for interactivity
-        selection = alt.selection_point(fields=['month'], name='month_select')
-
-        # Create the histogram
+        # Create the histogram (non-interactive)
         chart = (
             alt.Chart(crime_counts_df)
-            .mark_bar(cursor='pointer')
+            .mark_bar()
             .encode(
                 x=alt.X('month:N', title='Month', axis=alt.Axis(labelAngle=-45)),
                 y=alt.Y('crimes_count:Q', title='Total Crimes'),
@@ -306,7 +423,6 @@ def _(alt):
                     alt.Tooltip('crimes_count:Q', title='Total Crimes', format=',')
                 ]
             )
-            .add_params(selection)
             .properties(
                 height=150,  # Short height as requested
                 width='container'  # Full width
@@ -471,11 +587,18 @@ def _(
     postcode_to_coordinates,
     save_crimes_to_db,
     submit_button,
+    validate_date_format,
 ):
     # Main processing logic
     result_message = None
     crimes_fetched = []
     db_path = init_database()
+
+    # Track variables for this run only
+    current_lat = None
+    current_lng = None
+    current_postcode = None
+    successfully_processed = False
 
     if submit_button.value:
         # Check most recent data available
@@ -484,23 +607,42 @@ def _(
         postcode = postcode_input.value
         date = date_input.value
 
-        if postcode and date:
+        # Validate date format first
+        if date:
+            is_valid, error_msg = validate_date_format(date, last_updated)
+            if not is_valid:
+                result_message = mo.md(f"❌ **Invalid date:** {error_msg}")
+            elif not postcode:
+                result_message = mo.md("Please enter a postcode.")
+        elif postcode:
+            result_message = mo.md("Please enter a date.")
+        else:
+            result_message = mo.md("Please enter both postcode and date.")
+
+        if postcode and date and result_message is None:
             # Convert postcode to coordinates
             lat, lng = postcode_to_coordinates(postcode)
 
             if lat and lng:
+                # Mark as successfully processed and update current variables
+                successfully_processed = True
+                current_lat = lat
+                current_lng = lng
+                current_postcode = postcode
+
                 # Check cache first
                 is_cached, cached_count, fetched_at = check_query_cache(db_path, postcode, date)
 
                 if is_cached:
-                    # Data already exists - retrieve from database
-                    crimes_df = get_crimes_from_db_filtered(db_path, date)
+                    print("cached")
+                    # Data already exists - retrieve from database (filtered by location)
+                    crimes_df = get_crimes_from_db_filtered(db_path, date, lat, lng)
                     new_records = 0
                     data_source = "cache"
 
                     if len(crimes_df) > 0:
-                        # Get crime counts by month for histogram
-                        crime_counts_df = get_crime_counts_by_month(db_path, postcode)
+                        # Get crime counts by month for histogram (filtered by location)
+                        crime_counts_df = get_crime_counts_by_month(db_path, postcode, lat, lng)
 
                         # Check if querying for future date
                         date_warning = ""
@@ -509,8 +651,8 @@ def _(
 
                         last_updated_text = f"**Most Recent Data Available:** {last_updated}" if last_updated else ""
 
-                        # Store the histogram and map data for potential updates
-                        histogram_chart = mo.ui.altair_chart(create_crime_histogram(crime_counts_df, date))
+                        # Create histogram and map
+                        histogram_chart = create_crime_histogram(crime_counts_df, date)
                         crime_map = create_crime_map(crimes_df, lat, lng)
 
                         result_message = mo.vstack([
@@ -525,7 +667,7 @@ def _(
                             - **New API Call:** No - data already in database
                             {date_warning}
                             """),
-                            mo.md("### Crime Trends by Month (Click a bar to view that month)"),
+                            mo.md("### Crime Trends by Month"),
                             histogram_chart,
                             mo.md("### Interactive Map"),
                             crime_map
@@ -547,8 +689,8 @@ def _(
                         # Convert to Polars DataFrame for map
                         crimes_df = pl.DataFrame(crimes_fetched)
 
-                        # Get crime counts by month for histogram
-                        crime_counts_df = get_crime_counts_by_month(db_path, postcode)
+                        # Get crime counts by month for histogram (filtered by location)
+                        crime_counts_df = get_crime_counts_by_month(db_path, postcode, lat, lng)
 
                         # Check if querying for future date
                         date_warning = ""
@@ -557,8 +699,8 @@ def _(
 
                         last_updated_text = f"**Most Recent Data Available:** {last_updated}" if last_updated else ""
 
-                        # Store the histogram and map data for potential updates
-                        histogram_chart = mo.ui.altair_chart(create_crime_histogram(crime_counts_df, date))
+                        # Create histogram and map
+                        histogram_chart = create_crime_histogram(crime_counts_df, date)
                         crime_map = create_crime_map(crimes_df, lat, lng)
 
                         result_message = mo.vstack([
@@ -573,7 +715,7 @@ def _(
                             - **Data Source:** UK Police API (just fetched)
                             {date_warning}
                             """),
-                            mo.md("### Crime Trends by Month (Click a bar to view that month)"),
+                            mo.md("### Crime Trends by Month"),
                             histogram_chart,
                             mo.md("### Interactive Map"),
                             crime_map
@@ -592,12 +734,11 @@ def _(
                         result_message = mo.md(f"No crimes found for this location and date.{date_info}")
             else:
                 result_message = mo.md("Invalid postcode. Please try again.")
-        else:
-            result_message = mo.md("Please enter both postcode and date.")
 
         # Background fetching: populate database with all historical data for this location
+        # Only run if we successfully processed a query in this run
         background_status = None
-        if postcode and date and lat and lng and last_updated:
+        if successfully_processed and last_updated:
             # Generate all months from 2022-10 to most recent available (when UK Police API data begins)
             all_months = generate_month_range("2022-10", last_updated)
 
@@ -607,7 +748,7 @@ def _(
             # Count how many need fetching
             months_needing_fetch = []
             for month in months_to_fetch:
-                is_cached, _, _ = check_query_cache(db_path, postcode, month)
+                is_cached, _, _ = check_query_cache(db_path, current_postcode, month)
                 if not is_cached:
                     months_needing_fetch.append(month)
 
@@ -618,12 +759,12 @@ def _(
                 progress_updates = []
 
                 for idx, month in enumerate(months_needing_fetch, 1):
-                    crimes = fetch_crimes_at_location(lat, lng, month)
+                    crimes = fetch_crimes_at_location(current_lat, current_lng, month)
                     new_records = 0
                     if crimes:
                         new_records = save_crimes_to_db(crimes, db_path)
                         total_crimes_added += new_records
-                    add_to_query_cache(db_path, postcode, month, lat, lng, len(crimes) if crimes else 0)
+                    add_to_query_cache(db_path, current_postcode, month, current_lat, current_lng, len(crimes) if crimes else 0)
                     fetched_count += 1
 
                     # Print progress every 10 months or on last month
@@ -641,59 +782,18 @@ def _(
     if background_status and result_message:
         display_msg = mo.vstack([result_message, background_status])
 
-    # Export variables for potential reactivity
-    # These will be used if we want other cells to react to changes
-    current_postcode = postcode if submit_button.value and postcode else None
-    current_lat = lat if submit_button.value and postcode and date and lat else None
-    current_lng = lng if submit_button.value and postcode and date and lng else None
-    current_histogram = histogram_chart if submit_button.value and postcode and date and 'histogram_chart' in locals() else None
-
     # Display message
     mo.output.replace(display_msg)
 
-    print(submit_button.value)
-    return current_histogram, current_postcode, current_lat, current_lng, db_path
+    # Export variables for potential reactivity
+    return
 
 
 @app.cell
-def _(
-    create_crime_map,
-    current_histogram,
-    current_lat,
-    current_lng,
-    current_postcode,
-    db_path,
-    get_crimes_from_db_filtered,
-    mo,
-):
-    # React to histogram selection and update map
-    if current_histogram and current_histogram.value and current_lat and current_lng:
-        selection = current_histogram.value
-        if selection and len(selection) > 0:
-            # Get the selected month from the histogram
-            selected_month = selection[0].get('month')
-
-            if selected_month:
-                # Fetch crimes for the selected month
-                selected_crimes_df = get_crimes_from_db_filtered(db_path, selected_month)
-
-                if len(selected_crimes_df) > 0:
-                    # Create map for selected month
-                    selected_map = create_crime_map(selected_crimes_df, current_lat, current_lng)
-
-                    mo.output.replace(mo.vstack([
-                        mo.md(f"""
-                        ### Updated Map for {selected_month}
-                        - **Postcode:** {current_postcode}
-                        - **Selected Month:** {selected_month}
-                        - **Crimes Found:** {len(selected_crimes_df)}
-
-                        *Click another bar on the histogram above to view a different month*
-                        """),
-                        selected_map
-                    ]))
-                else:
-                    mo.output.replace(mo.md(f"No crimes found for {selected_month}"))
+def _():
+    # Histogram selection cell - REMOVED
+    # The histogram is now non-interactive (no month selection via clicking)
+    # It only displays crime trends with the submitted month highlighted in red
     return
 
 

@@ -4,8 +4,8 @@
 A marimo notebook application that fetches UK crime statistics from the Police.uk API based on postcode and date, stores them in a SQLite database, and visualizes crime locations on an interactive map.
 
 ## Current Status
-**Completed:** Working implementation with interactive map, histogram visualization, intelligent query caching, and background data fetching
-**Last Updated:** 2025-11-17 (interactive histogram with month selection, date range updated to 2022-10 onwards)
+**Completed:** Working implementation with interactive map, histogram visualization, intelligent query caching, date validation, and location-based filtering
+**Last Updated:** 2025-11-18 (critical bug fixes: location filtering, date validation, output size optimization)
 
 ## Features Implemented
 
@@ -70,6 +70,7 @@ A marimo notebook application that fetches UK crime statistics from the Police.u
 - **Postcode Input**: Text field for entering UK postcodes (e.g., "SW1A 1AA")
 - **Date Input**: Text field for year-month format (e.g., "2024-01")
   - Default: Previous month from today
+  - **Date Validation**: Prevents invalid dates (wrong format, invalid months, out of range)
 - **Run Button**: `mo.ui.run_button` triggers data fetch and processing
   - Changed from `mo.ui.button` to fix reactivity issues
 - **Results Display**: Shows:
@@ -77,33 +78,34 @@ A marimo notebook application that fetches UK crime statistics from the Police.u
   - Coordinates found
   - Date queried
   - **Most Recent Data Available**: Displays the latest month with data from the Police API
-  - Total crimes found
+  - Total crimes found (location-filtered)
   - New records added to database (or "0" if from cache)
   - **Data Source**: Cache with timestamp OR "just fetched" from API
   - **Warning messages**: Alerts if querying for dates beyond available data
-  - **Background fetch status**: Shows progress/completion of historical data fetching
-- **Interactive Visualizations**:
-  - Crime trends histogram with clickable bars to switch months
-  - Interactive map updates based on histogram selection
+  - **Error messages**: Clear validation errors for invalid date inputs
+- **Visualizations**:
+  - Crime trends histogram showing all cached months
+  - Interactive Folium map with crime markers
   - All visualizations display immediately
 
 ### 5. Data Visualization
 **Two visualization modes displayed together:**
 
-#### A. Interactive Crime Trends Histogram (Altair) ✨ NEW
+#### A. Crime Trends Histogram (Altair)
 - **Bar chart**: Shows total crime counts by month for the location
 - **Compact design**: Short height (150px) but full container width (matches map)
 - **Date range**: Displays all cached months from 2022-10 to present
-- **Visual highlighting**: Current/selected month shown in **red**, other months in **blue**
-- **Interactive month selection**: Click any bar to update the map to show that month's crimes
+- **Visual highlighting**: Queried month shown in **red**, other months in **blue**
 - **Tooltips**: Hover to see exact month and crime count
 - **Responsive**: Adapts to container width
-- **Performance**: Uses cached data from database - instant updates, no API calls
+- **Location-filtered**: Counts only crimes within ~1.4 miles of the postcode
+- **Performance**: Uses cached data from database - instant display, no API calls
+- **Non-interactive**: Simplified to show trends only (click selection removed to prevent output issues)
 
 #### B. Interactive Map (Folium)
 - **Street-level map tiles**: OpenStreetMap tiles showing actual streets and geography
 - **Postcode marker**: Green home icon shows the search location
-- **Crime markers**: Colored circle markers for each crime
+- **Crime markers**: Colored circle markers for each crime (location-filtered within ~1.4 miles)
   - Color-coded by crime category (burglary=red, drugs=purple, etc.)
   - Click to see popup with full details (category, street, month, coordinates)
   - Hover to see crime category
@@ -113,14 +115,13 @@ A marimo notebook application that fetches UK crime statistics from the Police.u
   - Min zoom 13, max zoom 16
   - Implements the 2.5 mile x 2.5 mile constraint from requirements
 - **14 crime categories** with distinct colors
-- **Dynamic updates**: Map refreshes when clicking histogram bars to show selected month
+- **Shows queried month only**: Map displays crimes for the submitted month/postcode only
 
 **Display Layout:**
 1. Results summary (postcode, coordinates, crime counts, data source)
-2. **Crime Trends by Month** histogram with clickable bars
-3. **Interactive Map** for selected/current month
-4. **Background fetch status** (if applicable)
-5. **Updated map view** (appears below when clicking histogram bars)
+2. **Crime Trends by Month** histogram (non-interactive, shows all cached months)
+3. **Interactive Map** for the queried month
+4. **Background fetch status** (if applicable, currently disabled)
 
 ## Technical Stack
 
@@ -255,7 +256,16 @@ marimo run main.py
    - Cannot filter map or chart by specific crime categories
    - Shows all 14+ crime types at once
 
-5. **Error Handling**: Basic error handling present but could be more robust
+5. **No Interactive Month Selection**: Histogram is display-only
+   - Cannot click bars to view different months
+   - Removed to prevent output size issues
+   - Each month requires a new query submission
+
+6. **Background Fetching Issues**: Automatic historical data fetching disabled
+   - Was causing output size issues for new postcodes (30+ months × API calls)
+   - May re-enable as optional/manual trigger in future
+
+7. **Error Handling**: Basic error handling present but could be more robust
    - API timeout: 10 seconds
    - No retry logic for failed requests
 
@@ -330,10 +340,16 @@ marimo run main.py
 - Ensure internet connection for postcodes.io API
 - Try with and without spaces (e.g., "SW1A1AA" or "SW1A 1AA")
 
+**"Invalid date" errors**
+- ❌ Invalid month (e.g., "2025-19"): Month must be 01-12
+- ❌ Wrong format: Must be YYYY-MM (e.g., "2024-01" not "2024-1")
+- ❌ Before 2022-10: UK Police API data starts from October 2022
+- ❌ Future date: Cannot query dates beyond the most recent available data
+
 **"No crimes found"**
 - Try different dates (API has historical data limits)
 - Some locations may have no reported crimes
-- Check date format is YYYY-MM
+- Check date format is YYYY-MM (validation will catch most issues now)
 - Try a different postcode to verify API is working
 
 **"API Error: Status XXX"**
@@ -408,6 +424,104 @@ When picking this up again, consider:
 16. Should there be help text explaining UK crime categories?
 
 ## Change Log
+
+### 2025-11-18 - Date Validation, Location Filtering, and Output Size Fixes
+
+**Session Summary:**
+Critical bug fixes and improvements to data validation, location filtering, and output management. Fixed major bug where crimes from all postcodes were being displayed together. Added comprehensive date validation to prevent invalid entries. Resolved output size issues caused by duplicate displays and removed interactive histogram selection to simplify UI.
+
+**Major Fixes and Features:**
+
+#### 1. Date Validation System
+- **Added `validate_date_format()` function** (main.py:236-282)
+  - Validates YYYY-MM format (catches invalid months like "2025-19")
+  - Checks month is between 01-12
+  - Ensures date is within valid range (2022-10 to last_updated from API)
+  - Provides clear, specific error messages for each validation failure
+- **Integrated into main processing logic** (main.py:556-566)
+  - Validates immediately after getting user input
+  - Displays user-friendly error messages with ❌ emoji
+  - Prevents API calls and database operations with invalid dates
+- **Database cleanup**: Removed 1 invalid record (2025-19) from query_cache table
+
+#### 2. Location Filtering Bug Fix ⚠️ CRITICAL
+- **Problem**: `get_crimes_from_db_filtered` only filtered by month, not location
+  - As database grew with multiple postcodes, ALL crimes for a month were returned
+  - Caused massive output sizes (29MB+) and incorrect crime displays
+- **Solution**: Added location-based filtering (main.py:174-207)
+  - Now filters by both month AND location using bounding box
+  - Radius: 0.02 degrees (≈1.4 miles) matching Police API behavior
+  - Each postcode query now shows only crimes near that specific location
+  - Dramatically reduced output size
+
+#### 3. Histogram Count Consistency Fix
+- **Problem**: "Crimes Found" number differed from histogram counts
+  - "Crimes Found" used location-filtered actual crimes
+  - Histogram used cached counts from query_cache (no location filter)
+- **Solution**: Updated `get_crime_counts_by_month()` (main.py:212-270)
+  - Now counts actual crimes from crimes table
+  - Applies same location filter as map display
+  - Histogram counts now match "Crimes Found" exactly
+
+#### 4. Output Size Issues Resolved
+- **Problem 1**: Multiple cells calling `mo.output.replace()` causing duplicate output
+  - Main cell displayed results + map
+  - Histogram selection cell also displayed another map
+  - Total output: ~29MB (two Folium maps)
+- **Solution 1**: Disabled histogram selection cell (main.py:738-742)
+  - Removed interactive month selection via clicking
+  - Kept histogram display with current month highlighting
+
+- **Problem 2**: Variable scoping issues with persisted values
+  - Variables like `lat`, `lng` persisted from previous runs
+  - Background fetching triggered with old values
+- **Solution 2**: Added proper variable tracking (main.py:538-542)
+  - Initialize `current_lat`, `current_lng`, `current_postcode` as None
+  - Added `successfully_processed` flag
+  - Only run background fetching if current query succeeded
+  - Use `current_*` variables consistently throughout
+
+#### 5. Simplified Histogram Visualization
+- **Removed interactive selection** from histogram (main.py:340-373)
+  - Changed from `mo.ui.altair_chart()` to regular Altair chart
+  - Removed `cursor='pointer'` and selection parameters
+  - Removed `current_histogram` variable exports
+- **Kept useful features**:
+  - Crime trends by month display
+  - Current month highlighted in red
+  - Other months shown in blue
+  - Tooltips on hover
+- **Updated headings**: "Crime Trends by Month" (removed "Click a bar to view")
+
+#### 6. Background Fetching Concerns
+- Background fetching still present but may cause output size issues for new postcodes
+- Automatically fetches 30+ months of historical data
+- Consider making this optional or removing in future sessions
+
+**Code Changes:**
+- Added `validate_date_format()` function for date validation
+- Updated `get_crimes_from_db_filtered()` to include location filtering
+- Updated `get_crime_counts_by_month()` to count actual crimes with location filter
+- Modified main processing cell to track variables properly
+- Simplified `create_crime_histogram()` to remove interactivity
+- Disabled histogram selection cell
+- Updated all function calls to pass lat/lng parameters
+
+**Database Changes:**
+- Deleted 1 invalid record from query_cache table (month "2025-19")
+- No schema changes
+
+**User Benefits:**
+- ✅ Cannot enter invalid dates (proper validation with clear errors)
+- ✅ Each postcode shows only its own crimes (not mixed with others)
+- ✅ Histogram counts match displayed crime counts
+- ✅ Normal output sizes (~10-15MB instead of 29MB+)
+- ✅ Faster, more reliable cached queries
+- ✅ Cleaner, simpler histogram without confusing interactivity
+
+**Known Issues:**
+- Background fetching may still cause output size issues for new postcodes
+- Consider making background fetching optional or disabling it
 
 ### 2025-11-17 - Interactive Histogram, Background Fetching, and Data Range Update
 

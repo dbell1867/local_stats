@@ -634,7 +634,6 @@ def _(
                 is_cached, cached_count, fetched_at = check_query_cache(db_path, postcode, date)
 
                 if is_cached:
-                    print("cached")
                     # Data already exists - retrieve from database (filtered by location)
                     crimes_df = get_crimes_from_db_filtered(db_path, date, lat, lng)
                     new_records = 0
@@ -689,9 +688,6 @@ def _(
                         # Convert to Polars DataFrame for map
                         crimes_df = pl.DataFrame(crimes_fetched)
 
-                        # Get crime counts by month for histogram (filtered by location)
-                        crime_counts_df = get_crime_counts_by_month(db_path, postcode, lat, lng)
-
                         # Check if querying for future date
                         date_warning = ""
                         if last_updated and date > last_updated:
@@ -699,10 +695,10 @@ def _(
 
                         last_updated_text = f"**Most Recent Data Available:** {last_updated}" if last_updated else ""
 
-                        # Create histogram and map
-                        histogram_chart = create_crime_histogram(crime_counts_df, date)
+                        # Create map first (show immediately while background fetching happens)
                         crime_map = create_crime_map(crimes_df, lat, lng)
 
+                        # Display map first - histogram will be added after background fetching
                         result_message = mo.vstack([
                             mo.md(f"""
                             ### Results (Fresh from API)
@@ -714,9 +710,9 @@ def _(
                             - **New Records Added:** {new_records}
                             - **Data Source:** UK Police API (just fetched)
                             {date_warning}
+
+                            *Fetching historical data in background...*
                             """),
-                            mo.md("### Crime Trends by Month"),
-                            histogram_chart,
                             mo.md("### Interactive Map"),
                             crime_map
                         ])
@@ -738,6 +734,8 @@ def _(
         # Background fetching: populate database with all historical data for this location
         # Only run if we successfully processed a query in this run
         background_status = None
+        histogram_after_fetch = None
+
         if successfully_processed and last_updated:
             # Generate all months from 2022-10 to most recent available (when UK Police API data begins)
             all_months = generate_month_range("2022-10", last_updated)
@@ -767,20 +765,38 @@ def _(
                     add_to_query_cache(db_path, current_postcode, month, current_lat, current_lng, len(crimes) if crimes else 0)
                     fetched_count += 1
 
-                    # Print progress every 10 months or on last month
-                    if idx % 10 == 0 or idx == len(months_needing_fetch):
-                        print(f"Progress: {idx}/{len(months_needing_fetch)} months fetched...")
+                    # Progress tracking removed to prevent output size issues
 
                 background_status = mo.md(f"✓ **Background fetch complete:** Fetched {fetched_count} months of historical data ({total_crimes_added:,} new crime records added to database).")
+
+                # After background fetching, generate histogram with all the historical data
+                # This only applies if we just fetched fresh data (not from cache)
+                if 'data_source' in locals() and data_source == "API":
+                    crime_counts_df = get_crime_counts_by_month(db_path, current_postcode, current_lat, current_lng)
+                    histogram_after_fetch = create_crime_histogram(crime_counts_df, date)
             else:
                 background_status = mo.md(f"✓ **Database up to date:** All months from 2022-10 to {last_updated} already cached for this location.")
 
-    # Display the result
-    display_msg = result_message if result_message else mo.md("Enter a postcode and date to fetch crime data.")
+                # Still generate histogram even if no fetching needed (data already exists)
+                if 'data_source' in locals() and data_source == "API":
+                    crime_counts_df = get_crime_counts_by_month(db_path, current_postcode, current_lat, current_lng)
+                    histogram_after_fetch = create_crime_histogram(crime_counts_df, date)
 
-    # Add background status if available
-    if background_status and result_message:
+    # Display the result
+    if not result_message:
+        display_msg = mo.md("Enter a postcode and date to fetch crime data.")
+    elif histogram_after_fetch:
+        # Fresh API fetch: add histogram after background fetching
+        components = [result_message, mo.md("### Crime Trends by Month"), histogram_after_fetch]
+        if background_status:
+            components.append(background_status)
+        display_msg = mo.vstack(components)
+    elif background_status:
+        # Cached query: add background status
         display_msg = mo.vstack([result_message, background_status])
+    else:
+        # No additional components
+        display_msg = result_message
 
     # Display message
     mo.output.replace(display_msg)
